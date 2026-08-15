@@ -1,0 +1,13 @@
+# Simulation artifacts
+*.vcd
+*.wlf
+*.log
+transcript
+work/
+obj_dir/
+
+# Tool generated files
+*.jou
+*.pb
+*.rpt
+.Xil/

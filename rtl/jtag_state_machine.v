@@ -57,7 +57,6 @@ module jtag_state_machine(
         end
     end
 
-    //I was going to use a function, but Vivado pooped itself when I tried. Typical...
     assign state_tlr = (state == TEST_LOGIC_RESET);
     assign state_capturedr = (state == CAPTURE_DR);
     assign state_captureir = (state == CAPTURE_IR);

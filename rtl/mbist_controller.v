@@ -46,9 +46,6 @@ module MBIST #(
     localparam [ADDR_WIDTH-1:0] MIN_ADDR = {ADDR_WIDTH{1'b0}}; // Lowest memory address (0)
 
 
-
-
-
 always @(posedge clk or negedge rst_n) begin
     if (!rst_n) begin
         current_state <= IDLE;

@@ -65,9 +65,10 @@ end
 
   
 always @(*) begin
-    next_state = current_state; // ערך ברירת מחדל למניעת Latch
-
+    
     case (current_state)
+        
+         // Wait for start trigger to begin BIST execution
         IDLE: begin
           if (start == 1'b1) begin
             next_state = STAGE_1_W0;
@@ -77,6 +78,7 @@ always @(*) begin
           end
         end
 
+        // Stage 1: Up sweep, write 0 across all addresses
         STAGE_1_W0: begin
           if (addr_cnt != MAX_ADDR) begin
             next_state = STAGE_1_W0;
@@ -86,36 +88,69 @@ always @(*) begin
           end
         end
 
+        // Stage 2: Up sweep, read 0 then write 1 at each address
         STAGE_2_R0_W1: begin
-            // שלב משולב (קריאה op_phase=0 ואז כתיבה op_phase=1)
-            // מתי מסיימים את כל הכתובות ועוברים ל-STAGE_3_R1_W0?
+            if ((addr_cnt == MAX_ADDR) && (op_phase == 1)) begin
+                next_state = STAGE_3_R1_W0;
+            end
+            else begin
+                next_state = STAGE_2_R0_W1;
+            end
         end
 
+        // Stage 3: Up sweep, read 1 then write 0 at each address
         STAGE_3_R1_W0: begin
-            // שלב משולב עולה נוסף
-            // מתי עוברים ל-STAGE_4_R0_W1?
+            if ((addr_cnt == MAX_ADDR) && (op_phase == 1)) begin
+                next_state = STAGE_4_R0_W1;
+            end
+            else begin
+                next_state =  STAGE_3_R1_W0;
+            end           
         end
 
+        // Stage 4: Down sweep, read 0 then write 1 at each address
         STAGE_4_R0_W1: begin
-            // שלב משולב יורד (מ-MAX_ADDR חזרה ל-MIN_ADDR)
-            // מתי עוברים ל-STAGE_5_R1_W0?
+            if ((addr_cnt == MIN_ADDR) && (op_phase == 1)) begin
+                next_state = STAGE_5_R1_W0;
+            end
+            else begin
+                next_state =  STAGE_4_R0_W1;
+            end      
         end
 
+        // Stage 5: Down sweep, read 1 then write 0 at each address
         STAGE_5_R1_W0: begin
-            // שלב משולב יורד נוסף
-            // מתי עוברים ל-STAGE_6_R0?
+            if ((addr_cnt == MIN_ADDR) && (op_phase == 1)) begin
+                next_state = STAGE_6_R0;
+            end
+            else begin
+                next_state =  STAGE_5_R1_W0;
+            end   
         end
 
+        // Stage 6: Down sweep, read 0 verification across all addresses
         STAGE_6_R0: begin
-            // שלב קריאה בלבד יורד (ללא כתיבה)
-            // מתי מסיימים ועוברים ל-DONE?
+            if (addr_cnt == MIN_ADDR) begin
+                next_state = DONE;
+            end
+            else begin
+                next_state = STAGE_6_R0;
+            end
         end
 
+        // Hold completion status until start is deasserted
         DONE: begin
-            // מתי חוזרים ל-IDLE? (למשל כאשר start יורד ל-0)
+            if (start == 0) begin
+                next_state = IDLE;
+            end
+            else begin
+                next_state = DONE;
+            end
         end
 
-        default: next_state = IDLE;
+default: begin
+            next_state = IDLE;
+        end
     endcase
 end
 

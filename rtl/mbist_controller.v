@@ -68,10 +68,12 @@ always @(posedge clk or negedge rst_n) begin
             end
 
             STAGE_1_W0: begin
-                // Increment address counter; reset to MIN_ADDR upon completion
-                 addr_cnt   <= MIN_ADDR;
-                if addr_cnt != MAX_ADDR begin
-                    
+                if (addr_cnt == MAX_ADDR) begin
+                    addr_cnt <= MIN_ADDR;
+                end
+                else begin
+                    addr_cnt <= addr_cnt + 1'b1;
+                end
             end
 
             STAGE_2_R0_W1: begin

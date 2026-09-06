@@ -18,7 +18,8 @@ module MBIST #(
 
     // FSM State Encoding
     localparam STATE_WIDTH = 3;                         // 3 bits needed for 8 states
-
+    
+    // According to the algorithm MARCH C-
     localparam [STATE_WIDTH-1:0] IDLE          = 3'd0,  // Wait for start trigger
                                  STAGE_1_W0    = 3'd1,  // Up sweep: Write 0
                                  STAGE_2_R0_W1 = 3'd2,  // Up sweep: Read 0, Write 1
@@ -77,7 +78,28 @@ always @(posedge clk or negedge rst_n) begin
             end
 
             STAGE_2_R0_W1: begin
-                // Toggle op_phase, increment address on write, check read data
+                
+                // Phase 0: Read and verify data
+                if (op_phase == 1'b0) begin
+                    op_phase <= 1'b1;
+
+                     if (mem_rdata != {DATA_WIDTH{1'b0}}) begin
+                        fail_flag <= 1'b1;
+                        if (!fail_flag) begin
+                            rfail_addr <= addr_cnt;
+                        end
+                    end
+                end 
+                // Phase 1: Write new data and update address
+                else begin
+                    op_phase <= 1'b0;
+
+                    if (addr_cnt == MAX_ADDR) begin
+                        addr_cnt <= MIN_ADDR;
+                    end else begin
+                        addr_cnt <= addr_cnt + 1'b1;
+                    end
+                end
             end
 
             STAGE_3_R1_W0: begin

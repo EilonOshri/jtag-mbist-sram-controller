@@ -47,10 +47,63 @@ module MBIST #(
 
 
 always @(posedge clk or negedge rst_n) begin
+   // Asynchronous reset
     if (!rst_n) begin
         current_state <= IDLE;
+        addr_cnt      <= {ADDR_WIDTH{1'b0}};
+        op_phase      <= 1'b0;
+        fail_flag     <= 1'b0;
+        rfail_addr    <= {ADDR_WIDTH{1'b0}};
     end else begin
+        // State register update
         current_state <= next_state;
+
+        // Datapath and control register updates
+        case (current_state)
+            IDLE: begin
+                 addr_cnt   <= {ADDR_WIDTH{1'b0}};
+                 op_phase   <= 1'b0;
+                 fail_flag  <= 1'b0;
+                 rfail_addr <= {ADDR_WIDTH{1'b0}};
+            end
+
+            STAGE_1_W0: begin
+                // Increment address counter; reset to MIN_ADDR upon completion
+                 addr_cnt   <= MIN_ADDR;
+                if addr_cnt != MAX_ADDR begin
+                    
+            end
+
+            STAGE_2_R0_W1: begin
+                // Toggle op_phase, increment address on write, check read data
+            end
+
+            STAGE_3_R1_W0: begin
+                // Toggle op_phase, increment address on write, preset to MAX_ADDR at end
+            end
+
+            STAGE_4_R0_W1: begin
+                // Toggle op_phase, decrement address on write, check read data
+            end
+
+            STAGE_5_R1_W0: begin
+                // Toggle op_phase, decrement address on write, preset to MAX_ADDR at end
+            end
+
+            STAGE_6_R0: begin
+                // Decrement address counter every cycle, verify read data
+            end
+
+            DONE: begin
+                // Hold counter, phase, and captured failure status
+            end
+
+            default: begin
+                // Safe recovery defaults
+                addr_cnt <= {ADDR_WIDTH{1'b0}};
+                op_phase <= 1'b0;
+            end
+        endcase
     end
 end
 

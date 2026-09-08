@@ -85,7 +85,7 @@ module jtag_mbist_top #(
         else if (mbist_start_pulse) begin
             mbist_start_reg <= 1'b1;             // Set start register upon JTAG Update-DR pulse
         end
-        else if (mbist_done || !mbist_ctrl[0]) begin
+        else if (mbist_done) begin
             mbist_start_reg <= 1'b0;             // Reset start register once test finishes
         end
     end

@@ -51,7 +51,7 @@ module tb_mbist;
         .rdata      (mem_rdata)
     );
 
-    // Clock Generation
+    // Clock Generation (Runs continuously)
     always #(CLK_PERIOD / 2) clk = ~clk;
 
     // Main Test Sequence
@@ -74,12 +74,11 @@ module tb_mbist;
         // Testcase 1: Good Memory Run (Expect PASS)
         // ==========================================
         $display("[TC1] Running March C- on Fault-Free SRAM...");
-        start = 1;
-        #(CLK_PERIOD);
-        
+        start = 1; // Hold start asserted throughout the test
+
         // Wait until MBIST completes
         @(posedge done);
-        #(CLK_PERIOD);
+        #(CLK_PERIOD * 10); // Hold in DONE state for 10 cycles to view clearly in waveforms
 
         if (fail === 1'b0) begin
             $display("[TC1 RESULT] SUCCESS: Memory test PASSED (done=1, fail=0)");
@@ -87,9 +86,9 @@ module tb_mbist;
             $display("[TC1 RESULT] FAILED: Expected fail=0, got fail=1 (rfail_addr = 0x%0h)", rfail_addr);
         end
 
-        // Deassert start to return to IDLE
+        // Deassert start to transition back to IDLE
         start = 0;
-        #(CLK_PERIOD * 5);
+        #(CLK_PERIOD * 10);
 
         // ==========================================
         // Testcase 2: Injected Fault (Expect FAIL)
@@ -98,15 +97,13 @@ module tb_mbist;
         $display("[TC2] Running March C- with Injected Stuck-at Fault...");
 
         // Inject stuck-at-1 fault into memory array at address 8'h2A
-        // (Accessing internal memory structure directly from TB)
         u_sram.mem[8'h2A] = 8'hFF;
 
-        start = 1;
-        #(CLK_PERIOD);
+        start = 1; // Hold start asserted throughout the test
 
         // Wait until MBIST completes
         @(posedge done);
-        #(CLK_PERIOD);
+        #(CLK_PERIOD * 10); // Hold in DONE state for 10 cycles to view clearly in waveforms
 
         if (fail === 1'b1 && rfail_addr === 8'h2A) begin
             $display("[TC2 RESULT] SUCCESS: Fault detected at correct address 0x%0h!", rfail_addr);
@@ -114,13 +111,13 @@ module tb_mbist;
             $display("[TC2 RESULT] FAILED: fail=%0b, rfail_addr=0x%0h (Expected addr: 0x2A)", fail, rfail_addr);
         end
 
+        // Deassert start to transition back to IDLE
         start = 0;
-        #(CLK_PERIOD * 5);
+        #(CLK_PERIOD * 10);
 
         $display("----------------------------------------------");
-        $display("MBIST Verification Complete.");
+        $display("MBIST Verification Sequence Finished. Clock continues running.");
         $display("----------------------------------------------");
-        $finish;
     end
 
 endmodule

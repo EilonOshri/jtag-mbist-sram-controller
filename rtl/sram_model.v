@@ -1,4 +1,4 @@
-module SRAM #(
+module sram_model #(
     parameter ADDR_WIDTH = 8,   // 256 Word
     parameter DATA_WIDTH = 8    // 8-bit word width
 )(

@@ -7,7 +7,6 @@ module MBIST #(
     input  wire                  start,                 // Start BIST execution pulse
     input  wire [DATA_WIDTH-1:0] mem_rdata,             // Data read from SRAM
     output wire                  done,                  // High when test completes
-    output wire                  pass,                  // High if test passed
     output wire                  fail,                  // High if test failed
     output wire [ADDR_WIDTH-1:0] mem_addr,              // Memory address driven by BIST
     output wire [DATA_WIDTH-1:0] mem_wdata,             // Memory data pattern driven by BIST
@@ -68,6 +67,7 @@ always @(posedge clk or negedge rst_n) begin
                  rfail_addr <= {ADDR_WIDTH{1'b0}};
             end
 
+            
             STAGE_1_W0: begin
                 if (addr_cnt == MAX_ADDR) begin
                     addr_cnt <= MIN_ADDR;
@@ -77,8 +77,8 @@ always @(posedge clk or negedge rst_n) begin
                 end
             end
 
+            
             STAGE_2_R0_W1: begin
-                
                 // Phase 0: Read and verify data
                 if (op_phase == 1'b0) begin
                     op_phase <= 1'b1;
@@ -96,30 +96,114 @@ always @(posedge clk or negedge rst_n) begin
 
                     if (addr_cnt == MAX_ADDR) begin
                         addr_cnt <= MIN_ADDR;
-                    end else begin
+                    end
+                    else begin
                         addr_cnt <= addr_cnt + 1'b1;
                     end
                 end
             end
 
+            
             STAGE_3_R1_W0: begin
-                // Toggle op_phase, increment address on write, preset to MAX_ADDR at end
+                // Phase 0: Read and verify data
+                if (op_phase == 1'b0) begin
+                    op_phase <= 1'b1;
+
+                    if (mem_rdata != {DATA_WIDTH{1'b1}}) begin
+                        fail_flag <= 1'b1;
+                        if (!fail_flag) begin
+                            rfail_addr <= addr_cnt;
+                        end
+                    end
+                end 
+                // Phase 1: Write new data and update address
+                else begin
+                    op_phase <= 1'b0;
+
+                    if (addr_cnt == MAX_ADDR) begin
+                        addr_cnt <= MAX_ADDR;             // Keep at MAX_ADDR for descending sweep in Stage 4
+                    end
+                    else begin
+                        addr_cnt <= addr_cnt + 1'b1;
+                    end
+                end
             end
 
+            
             STAGE_4_R0_W1: begin
-                // Toggle op_phase, decrement address on write, check read data
+                                // Phase 0: Read and verify data
+                if (op_phase == 1'b0) begin
+                    op_phase <= 1'b1;
+
+                     if (mem_rdata != {DATA_WIDTH{1'b0}}) begin
+                        fail_flag <= 1'b1;
+                        if (!fail_flag) begin
+                            rfail_addr <= addr_cnt;
+                        end
+                    end
+                end 
+                // Phase 1: Write new data and update address
+                else begin
+                    op_phase <= 1'b0;
+
+                    if (addr_cnt == MIN_ADDR) begin
+                        addr_cnt <= MAX_ADDR;
+                    end
+                    else begin
+                        addr_cnt <= addr_cnt - 1'b1;
+                    end
+                end
             end
 
+            
             STAGE_5_R1_W0: begin
-                // Toggle op_phase, decrement address on write, preset to MAX_ADDR at end
+                 // Phase 0: Read and verify data
+                if (op_phase == 1'b0) begin
+                    op_phase <= 1'b1;
+
+                    if (mem_rdata != {DATA_WIDTH{1'b1}}) begin
+                        fail_flag <= 1'b1;
+                        if (!fail_flag) begin
+                            rfail_addr <= addr_cnt;
+                        end
+                    end
+                end 
+                // Phase 1: Write new data and update address
+                else begin
+                    op_phase <= 1'b0;
+
+                    if (addr_cnt == MIN_ADDR) begin
+                        addr_cnt <= MAX_ADDR;             // Keep at MAX_ADDR for descending sweep in Stage 6
+                    end
+                    else begin
+                        addr_cnt <= addr_cnt - 1'b1;
+                    end
+                end
             end
 
+            
             STAGE_6_R0: begin
-                // Decrement address counter every cycle, verify read data
+                  // Read and verify data every cycle
+                if (mem_rdata != {DATA_WIDTH{1'b0}}) begin
+                      fail_flag <= 1'b1;
+                  if (!fail_flag) begin
+                      rfail_addr <= addr_cnt;
+                  end
+                end 
+                // Decrement address down to MIN_ADDR
+               if (addr_cnt == MIN_ADDR) begin
+                     addr_cnt <= MIN_ADDR;   
+               end
+              else begin
+                     addr_cnt <= addr_cnt - 1'b1;
+              end            
             end
 
+            
             DONE: begin
-                // Hold counter, phase, and captured failure status
+                // Hold counter and phase values
+                addr_cnt <= MIN_ADDR;
+                op_phase <= 1'b0;  
             end
 
             default: begin
@@ -132,12 +216,6 @@ always @(posedge clk or negedge rst_n) begin
 end
 
 
-
-
-
-
-
-  
 always @(*) begin
     
     case (current_state)
@@ -228,27 +306,13 @@ default: begin
     endcase
 end
 
+    
+assign done = (current_state == DONE) ? 1'b1 : 1'b0;
+assign fail = fail_flag;   
+assign mem_addr = addr_cnt;
+assign mem_ce_n = (current_state == IDLE || current_state == DONE) ? 1'b1 : 1'b0;
+assign mem_we_n = (current_state == STAGE_1_W0 || op_phase == 1'b1) ? 1'b0 : 1'b1; 
+assign mem_wdata = (current_state == STAGE_2_R0_W1 || current_state == STAGE_4_R0_W1) ? {DATA_WIDTH{1'b1}} : {DATA_WIDTH{1'b0}};
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  
-
+    
 endmodule

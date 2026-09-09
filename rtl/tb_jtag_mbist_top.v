@@ -2,274 +2,286 @@
 
 module tb_jtag_mbist_top;
 
-    // =========================================================================
     // Parameters
-    // =========================================================================
     localparam ADDR_WIDTH   = 8;
     localparam DATA_WIDTH   = 8;
     localparam IR_LEN       = 4;
     localparam MBIST_DR_LEN = 32;
 
-    // JTAG Opcodes
-    localparam [IR_LEN-1:0] OP_RUN_MBIST = 4'b0010;
+    // Clock periods
+    localparam SYS_CLK_PERIOD = 10;  // 100 MHz System Clock
+    localparam TCK_PERIOD     = 100; // 10 MHz JTAG Test Clock
+
+    // JTAG Instructions
+    localparam [IR_LEN-1:0] OP_MBIST_RUN = 4'b0011;
     localparam [IR_LEN-1:0] OP_BYPASS    = 4'b1111;
 
-    // Clock Periods
-    localparam CLK_PERIOD = 10; // System Clock: 100 MHz (10ns)
-    localparam TCK_PERIOD = 40; // JTAG TCK:      25 MHz  (40ns - Asynchronous / Slower)
+    // Testbench Signals
+    reg                     clk;
+    reg                     rst_n;
+    reg                     tck;
+    reg                     tms;
+    reg                     trst_n;
+    reg                     tdi;
+    wire                    tdo;
+    reg                     inject_fault;
 
-    // =========================================================================
-    // DUT Signals
-    // =========================================================================
-    // Clocks and Resets
-    reg  clk;
-    reg  rst_n;
-    reg  tck;
-    reg  tms;
-    reg  trst_n;
-    reg  tdi;
-    wire tdo;
+    // Functional Interface (tied off during BIST test)
+    reg                     func_ce_n;
+    reg                     func_we_n;
+    reg  [ADDR_WIDTH-1:0]   func_addr;
+    reg  [DATA_WIDTH-1:0]   func_wdata;
+    wire [DATA_WIDTH-1:0]   func_rdata;
 
-    // Functional Interface
-    reg                   func_ce_n;
-    reg                   func_we_n;
-    reg  [ADDR_WIDTH-1:0] func_addr;
-    reg  [DATA_WIDTH-1:0] func_wdata;
-    wire [DATA_WIDTH-1:0] func_rdata;
+    // Shift registers for TB verification
+    reg [MBIST_DR_LEN-1:0]  dr_readout;
 
-    // Testbench Variables
-    reg [MBIST_DR_LEN-1:0] captured_status;
-
-    // =========================================================================
-    // Device Under Test (DUT) Instantiation
-    // =========================================================================
+    // Instantiate Top-Level Design Under Test
     jtag_mbist_top #(
         .ADDR_WIDTH   (ADDR_WIDTH),
         .DATA_WIDTH   (DATA_WIDTH),
         .IR_LEN       (IR_LEN),
         .MBIST_DR_LEN (MBIST_DR_LEN)
     ) dut (
-        .clk        (clk),
-        .rst_n      (rst_n),
-        .tck        (tck),
-        .tms        (tms),
-        .trst_n     (trst_n),
-        .tdi        (tdi),
-        .tdo        (tdo),
-        .func_ce_n  (func_ce_n),
-        .func_we_n  (func_we_n),
-        .func_addr  (func_addr),
-        .func_wdata (func_wdata),
-        .func_rdata (func_rdata)
+        .clk          (clk),
+        .rst_n        (rst_n),
+        .tck          (tck),
+        .tms          (tms),
+        .trst_n       (trst_n),
+        .tdi          (tdi),
+        .tdo          (tdo),
+        .inject_fault (inject_fault),
+        .func_ce_n    (func_ce_n),
+        .func_we_n    (func_we_n),
+        .func_addr    (func_addr),
+        .func_wdata   (func_wdata),
+        .func_rdata   (func_rdata)
     );
 
-    // =========================================================================
-    // Clock Generators
-    // =========================================================================
-    // System Clock (100 MHz)
-    initial clk = 1'b0;
-    always #(CLK_PERIOD / 2) clk = ~clk;
-
-    // JTAG Test Clock (25 MHz)
-    initial tck = 1'b0;
-    always #(TCK_PERIOD / 2) tck = ~tck;
+    // Continuous System and JTAG Clock Generation
+    always #(SYS_CLK_PERIOD / 2) clk = ~clk;
+    always #(TCK_PERIOD / 2)     tck = ~tck;
 
     // =========================================================================
-    // JTAG Driver Tasks (TAP Master Emulation)
+    // JTAG Tasks (IEEE 1149.1 Standard Navigation)
     // =========================================================================
 
-    // Task 1: Reset the TAP FSM to Test-Logic-Reset (TLR) using 5 consecutive TMS=1
-    task tap_reset();
+    // Reset TAP Controller to Test-Logic-Reset, then transition to Run-Test/Idle
+    task tap_reset;
+        begin
+            trst_n = 1'b0;
+            tms    = 1'b1;
+            tdi    = 1'b0;
+            #(TCK_PERIOD * 3);
+            trst_n = 1'b1;
+            #(TCK_PERIOD * 2);
+
+            // 5 TCK cycles with TMS=1 guarantees TEST_LOGIC_RESET
+            repeat (5) @(negedge tck);
+
+            // Move to RUN_TEST_IDLE (TMS: 0)
+            @(negedge tck) tms = 1'b0;
+            @(negedge tck);
+        end
+    endtask
+
+    // Shift an Instruction into the IR (assumes start at RUN_TEST_IDLE)
+    task shift_ir;
+        input [IR_LEN-1:0] opcode;
         integer i;
         begin
+            // Move: RUN_TEST_IDLE -> SELECT_DR_SCAN -> SELECT_IR_SCAN
+            @(negedge tck) tms = 1'b1;
+            @(negedge tck) tms = 1'b1;
+            // Move: SELECT_IR_SCAN -> CAPTURE_IR -> SHIFT_IR
+            @(negedge tck) tms = 1'b0;
+            @(negedge tck) tms = 1'b0;
+
+            // Shift bits [0] up to [IR_LEN-2] with TMS=0
+            for (i = 0; i < IR_LEN - 1; i = i + 1) begin
+                @(negedge tck);
+                tdi = opcode[i];
+                tms = 1'b0;
+            end
+
+            // Shift last bit [IR_LEN-1] with TMS=1 (Transition to EXIT1_IR)
+            @(negedge tck);
+            tdi = opcode[IR_LEN-1];
+            tms = 1'b1;
+
+            // Move: EXIT1_IR -> UPDATE_IR -> RUN_TEST_IDLE
+            @(negedge tck) tms = 1'b1;
+            @(negedge tck) tms = 1'b0;
+            @(negedge tck);
+        end
+    endtask
+
+    // Write a 32-bit vector into Data Register (assumes start at RUN_TEST_IDLE)
+    task write_dr;
+        input [MBIST_DR_LEN-1:0] din;
+        integer i;
+        begin
+            // Move: RUN_TEST_IDLE -> SELECT_DR_SCAN -> CAPTURE_DR -> SHIFT_DR
+            @(negedge tck) tms = 1'b1;
+            @(negedge tck) tms = 1'b0;
+            @(negedge tck) tms = 1'b0;
+
+            // Shift bits [0] to [30] with TMS=0
+            for (i = 0; i < MBIST_DR_LEN - 1; i = i + 1) begin
+                @(negedge tck);
+                tdi = din[i];
+                tms = 1'b0;
+            end
+
+            // Shift last bit [31] with TMS=1 (Transition to EXIT1_DR)
+            @(negedge tck);
+            tdi = din[MBIST_DR_LEN-1];
+            tms = 1'b1;
+
+            // Move: EXIT1_DR -> UPDATE_DR -> RUN_TEST_IDLE
+            @(negedge tck) tms = 1'b1;
+            @(negedge tck) tms = 1'b0;
+            @(negedge tck);
+        end
+    endtask
+
+    // Read 32-bit Data Register out via TDO (assumes start at RUN_TEST_IDLE)
+    task read_dr;
+        output [MBIST_DR_LEN-1:0] dout;
+        integer i;
+        begin
+            // Move: RUN_TEST_IDLE -> SELECT_DR_SCAN -> CAPTURE_DR -> SHIFT_DR
+            @(negedge tck) tms = 1'b1;
+            @(negedge tck) tms = 1'b0;
+            @(negedge tck) tms = 1'b0;
+
+            // Shift out bits [0] to [30]
+            for (i = 0; i < MBIST_DR_LEN - 1; i = i + 1) begin
+                @(posedge tck);
+                dout[i] = tdo;
+                @(negedge tck);
+                tms = 1'b0;
+                tdi = 1'b0;
+            end
+
+            // Shift out last bit [31] with TMS=1 (Transition to EXIT1_DR)
+            @(posedge tck);
+            dout[MBIST_DR_LEN-1] = tdo;
+            @(negedge tck);
             tms = 1'b1;
             tdi = 1'b0;
-            for (i = 0; i < 5; i = i + 1) begin
-                @(posedge tck);
-            end
-            // Move from Test-Logic-Reset to Run-Test/Idle
-            #(TCK_PERIOD * 0.2);
-            tms = 1'b0;
-            @(posedge tck);
-            #(TCK_PERIOD * 0.2);
-        end
-    endtask
 
-    // Task 2: Shift an Instruction into the IR (Shift-IR -> Update-IR -> Run-Test/Idle)
-    task shift_ir(input [IR_LEN-1:0] opcode);
-        integer i;
-        begin
-            // Navigate: Run-Test/Idle -> Select-DR-Scan (TMS=1) -> Select-IR-Scan (TMS=1)
-            #(TCK_PERIOD * 0.2); tms = 1'b1; @(posedge tck);
-            #(TCK_PERIOD * 0.2); tms = 1'b1; @(posedge tck);
-            
-            // Navigate: Select-IR-Scan -> Capture-IR (TMS=0) -> Shift-IR (TMS=0)
-            #(TCK_PERIOD * 0.2); tms = 1'b0; @(posedge tck);
-            #(TCK_PERIOD * 0.2); tms = 1'b0; @(posedge tck);
-
-            // Shift Opcode bits (LSB first). On the last bit, assert TMS=1 to go to Exit1-IR
-            for (i = 0; i < IR_LEN; i = i + 1) begin
-                #(TCK_PERIOD * 0.2);
-                tdi = opcode[i];
-                if (i == IR_LEN - 1)
-                    tms = 1'b1; // Last bit moves to Exit1-IR
-                else
-                    tms = 1'b0;
-                @(posedge tck);
-            end
-
-            // Navigate: Exit1-IR -> Update-IR (TMS=1)
-            #(TCK_PERIOD * 0.2); tms = 1'b1; @(posedge tck);
-
-            // Navigate: Update-IR -> Run-Test/Idle (TMS=0)
-            #(TCK_PERIOD * 0.2); tms = 1'b0; @(posedge tck);
-            tdi = 1'b0;
-        end
-    endtask
-
-    // Task 3: Shift Data into DR and Capture Data out from TDO
-    task shift_dr(
-        input  [MBIST_DR_LEN-1:0] din,
-        output [MBIST_DR_LEN-1:0] dout
-    );
-        integer i;
-        begin
-            // Navigate: Run-Test/Idle -> Select-DR-Scan (TMS=1)
-            #(TCK_PERIOD * 0.2); tms = 1'b1; @(posedge tck);
-
-            // Navigate: Select-DR-Scan -> Capture-DR (TMS=0) -> Shift-DR (TMS=0)
-            #(TCK_PERIOD * 0.2); tms = 1'b0; @(posedge tck);
-            #(TCK_PERIOD * 0.2); tms = 1'b0; @(posedge tck);
-
-            // Shift DR bits (LSB first). Sample TDO on negedge / stable region
-            for (i = 0; i < MBIST_DR_LEN; i = i + 1) begin
-                #(TCK_PERIOD * 0.2);
-                tdi = din[i];
-                if (i == MBIST_DR_LEN - 1)
-                    tms = 1'b1; // Last bit moves to Exit1-DR
-                else
-                    tms = 1'b0;
-
-                // Sample TDO on falling edge of TCK (IEEE 1149.1 TDO changes on negedge TCK)
-                @(negedge tck);
-                dout[i] = tdo;
-                @(posedge tck);
-            end
-
-            // Navigate: Exit1-DR -> Update-DR (TMS=1)
-            #(TCK_PERIOD * 0.2); tms = 1'b1; @(posedge tck);
-
-            // Navigate: Update-DR -> Run-Test/Idle (TMS=0)
-            #(TCK_PERIOD * 0.2); tms = 1'b0; @(posedge tck);
-            tdi = 1'b0;
+            // Move: EXIT1_DR -> UPDATE_DR -> RUN_TEST_IDLE
+            @(negedge tck) tms = 1'b1;
+            @(negedge tck) tms = 1'b0;
+            @(negedge tck);
         end
     endtask
 
     // =========================================================================
-    // Main Test Execution Flow
+    // Main Verification Flow
     // =========================================================================
     initial begin
-        $display("=================================================================");
-        $display("       STARTING JTAG-MBIST SYSTEM-LEVEL VERIFICATION            ");
-        $display("=================================================================");
+        // Signal Initialization
+        clk          = 1'b0;
+        rst_n        = 1'b0;
+        tck          = 1'b0;
+        tms          = 1'b1;
+        trst_n       = 1'b0;
+        tdi          = 1'b0;
+        inject_fault = 1'b0;
+        func_ce_n    = 1'b1;
+        func_we_n    = 1'b1;
+        func_addr    = {ADDR_WIDTH{1'b0}};
+        func_wdata   = {DATA_WIDTH{1'b0}};
+        dr_readout   = {MBIST_DR_LEN{1'b0}};
 
-        // 1. Initial State & Hardware Reset
-        rst_n       = 1'b0;
-        trst_n      = 1'b0;
-        tms         = 1'b1;
-        tdi         = 1'b0;
-        func_ce_n   = 1'b1;
-        func_we_n   = 1'b1;
-        func_addr   = {ADDR_WIDTH{1'b0}};
-        func_wdata  = {DATA_WIDTH{1'b0}};
+        $display("============================================================");
+        $display("Starting Top-Level JTAG-MBIST Integration Verification");
+        $display("============================================================");
 
-        #(CLK_PERIOD * 5);
-        rst_n  = 1'b1;
-        trst_n = 1'b1;
-        #(CLK_PERIOD * 5);
+        // System Asynchronous Reset
+        #(SYS_CLK_PERIOD * 3);
+        rst_n = 1'b1;
+        #(SYS_CLK_PERIOD * 2);
 
-        // Put TAP controller into Run-Test/Idle state
+        // Reset TAP Controller
         tap_reset();
-        $display("[STATUS] System & TAP Controller Reset completed successfully.");
 
         // =====================================================================
-        // TEST 1: Golden Run (Clean Memory -> Expected PASS)
+        // Testcase 1: Golden Run (inject_fault = 0 -> Expect PASS via TDO)
         // =====================================================================
-        $display("\n--- [TEST 1] Starting MBIST on Clean Memory (Expecting PASS) ---");
+        $display("\n[TC1] Configuring JTAG for MBIST Golden Run (No Fault)...");
+        inject_fault = 1'b0;
 
-        // Load RUN_MBIST opcode into JTAG IR
-        shift_ir(OP_RUN_MBIST);
-        $display("[JTAG] Loaded OP_RUN_MBIST (4'b0010) into IR.");
+        // Step 1: Load MBIST_RUN instruction into IR
+        shift_ir(OP_MBIST_RUN);
 
-        // Trigger MBIST execution by shifting 32'h00000001 (bit 0 = start) into MBIST DR
-        shift_dr(32'h0000_0001, captured_status);
-        $display("[JTAG] Shifted Start pulse via Update-DR. MBIST is now running...");
+        // Step 2: Trigger MBIST by writing start bit to Data Register (bit[0]=1)
+        write_dr(32'h0000_0001);
 
-        // Wait for MBIST to complete (March C- requires approx ~2000-3000 clock cycles)
-        wait(dut.mbist_done == 1'b1);
-        $display("[MBIST] Execution completed! mbist_done asserted.");
-        #(CLK_PERIOD * 10);
+        // Step 3: Clear start trigger bit so BIST returns to IDLE upon finish
+        write_dr(32'h0000_0000);
 
-        // Shift out the MBIST 32-bit Status Register through TDO
-        shift_dr(32'h0000_0000, captured_status);
+        // Step 4: Wait for MBIST to execute March C- in RUN_TEST_IDLE state
+        $display("[TC1] Waiting for MBIST execution to complete...");
+        @(posedge dut.mbist_done);
+        #(SYS_CLK_PERIOD * 20);
 
-        $display("[JTAG TDO Output] Captured Status Word: 32'h%08X", captured_status);
-        $display("  -> Done Flag      : %b", captured_status[0]);
-        $display("  -> Fail Flag      : %b", captured_status[1]);
-        $display("  -> Failing Address: 0x%02X", captured_status[9:2]);
+        // Step 5: Read Status Register through JTAG TDO
+        read_dr(dr_readout);
 
-        // Self-Checking Verification
-        if (captured_status[0] == 1'b1 && captured_status[1] == 1'b0) begin
-            $display("[TEST 1 PASSED] Memory is fully functional! Zero faults found.");
+        $display("[TC1] JTAG DR Readout: 0x%08h", dr_readout);
+        $display("[TC1] Decoded Status -> done: %0b, fail: %0b, rfail_addr: 0x%02h", 
+                 dr_readout[0], dr_readout[1], dr_readout[9:2]);
+
+        if (dr_readout[0] === 1'b1 && dr_readout[1] === 1'b0) begin
+            $display("[TC1 RESULT] SUCCESS: Golden Run PASSED via JTAG interface!");
         end else begin
-            $display("[TEST 1 FAILED] Expected Pass, but received Fail!");
-            $stop;
+            $display("[TC1 RESULT] FAILED: Expected done=1, fail=0. Got done=%0b, fail=%0b", 
+                     dr_readout[0], dr_readout[1]);
         end
 
-        // Return to Idle and let the system settle
-        tap_reset();
-        #(CLK_PERIOD * 20);
+        #(TCK_PERIOD * 10);
 
         // =====================================================================
-        // TEST 2: Fault Injection Run (Inject Fault -> Expected FAIL)
+        // Testcase 2: Fault Injection Run (inject_fault = 1 -> Expect FAIL @ 0x2A)
         // =====================================================================
-        $display("\n--- [TEST 2] Injecting Fault into SRAM (Expecting FAIL) ---");
+        $display("\n------------------------------------------------------------");
+        $display("[TC2] Configuring JTAG for MBIST Run with Fault Active at 0x2A...");
+        inject_fault = 1'b1;
 
-        // Inject a stuck bit at Address 8'h2A using hierarchical backdoor access
-        // (Simulating a physical manufacturing defect in cell 0x2A)
-        dut.u_sram.mem[8'h2A] = 8'hAA; 
-        $display("[FAULT INJECTION] Corrupted memory address 0x2A with value 0xAA.");
+        // Step 1: Ensure MBIST_RUN instruction is loaded
+        shift_ir(OP_MBIST_RUN);
 
-        // Re-arm and launch MBIST via JTAG
-        shift_ir(OP_RUN_MBIST);
-        shift_dr(32'h0000_0001, captured_status);
-        $display("[JTAG] Launched MBIST verification run...");
+        // Step 2: Trigger MBIST by writing start bit to Data Register (bit[0]=1)
+        write_dr(32'h0000_0001);
 
-        // Wait for MBIST to complete
-        wait(dut.mbist_done == 1'b1);
-        $display("[MBIST] Execution completed! Reading diagnostic status...");
-        #(CLK_PERIOD * 10);
+        // Step 3: Clear start trigger bit
+        write_dr(32'h0000_0000);
 
-        // Read out status through JTAG TDO
-        shift_dr(32'h0000_0000, captured_status);
+        // Step 4: Wait for MBIST to execute and capture failure
+        $display("[TC2] Waiting for MBIST execution to complete...");
+        @(posedge dut.mbist_done);
+        #(SYS_CLK_PERIOD * 20);
 
-        $display("[JTAG TDO Output] Captured Status Word: 32'h%08X", captured_status);
-        $display("  -> Done Flag      : %b", captured_status[0]);
-        $display("  -> Fail Flag      : %b", captured_status[1]);
-        $display("  -> Failing Address: 0x%02X", captured_status[9:2]);
+        // Step 5: Read Status Register through JTAG TDO
+        read_dr(dr_readout);
 
-        // Self-Checking Verification
-        if (captured_status[0] == 1'b1 && captured_status[1] == 1'b1 && captured_status[9:2] == 8'h2A) begin
-            $display("[TEST 2 PASSED] MBIST successfully caught defect at address 0x%02X!", captured_status[9:2]);
+        $display("[TC2] JTAG DR Readout: 0x%08h", dr_readout);
+        $display("[TC2] Decoded Status -> done: %0b, fail: %0b, rfail_addr: 0x%02h", 
+                 dr_readout[0], dr_readout[1], dr_readout[9:2]);
+
+        if (dr_readout[0] === 1'b1 && dr_readout[1] === 1'b1 && dr_readout[9:2] === 8'h2A) begin
+            $display("[TC2 RESULT] SUCCESS: Fault caught and reported correctly via JTAG! (Addr: 0x2A)");
         end else begin
-            $display("[TEST 2 FAILED] Fault was not detected accurately!");
-            $stop;
+            $display("[TC2 RESULT] FAILED: Expected fail=1 and rfail_addr=0x2A. Got fail=%0b, rfail_addr=0x%02h", 
+                     dr_readout[1], dr_readout[9:2]);
         end
 
-        $display("\n=================================================================");
-        $display("   ALL SYSTEM-LEVEL TESTS COMPLETED SUCCESSFULLY (100%% PASS)   ");
-        $display("=================================================================\n");
-        $finish;
+        $display("============================================================");
+        $display("JTAG Top-Level Verification Complete.");
+        $display("============================================================");
     end
 
 endmodule

@@ -21,9 +21,8 @@ module sram_model #(
                 // Write Operation: Store wdata into the specified memory address
                 mem[addr] <= wdata;
             end else begin
-                // Read Operation: Fetch data from the specified memory address
-                // Output is available on the next clock cycle (1-cycle read latency)
-                rdata <= mem[addr];
+                // Combinational read: outputs data immediately (0 cycle delay) to match MBIST single cycle sampling
+                assign rdata = (!ce_n && we_n) ? mem[addr] : {DATA_WIDTH{1'b0}};
             end
         end
     end

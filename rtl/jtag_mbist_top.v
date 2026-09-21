@@ -5,31 +5,37 @@ module jtag_mbist_top #(
     parameter MBIST_DR_LEN = 32   // JTAG MBIST Data Register length in bits
 )(
     // System Clock and Reset
-    input  wire                  clk,         
-    input  wire                  rst_n,      
+    input  wire                   clk,         
+    input  wire                   rst_n,      
   
     // IEEE 1149.1 JTAG Pins
-    input  wire                  tck,        // Test Clock input
-    input  wire                  tms,        // Test Mode Select input
-    input  wire                  trst_n,     // Test Reset input (active-low)
-    input  wire                  tdi,        // Test Data In serial input
-    output wire                  tdo,        // Test Data Out serial output
+    input  wire                   tck,        // Test Clock input
+    input  wire                   tms,        // Test Mode Select input
+    input  wire                   trst_n,     // Test Reset input (active-low)
+    input  wire                   tdi,        // Test Data In serial input
+    output wire                   tdo,        // Test Data Out serial output
 
     // Fault Injection Control (Verification Hook)
-    input  wire                  inject_fault,
+    input  wire                   inject_fault,
 
     // Functional Memory Interface (Normal Operation Mode)
-    input  wire                  func_ce_n,  // Functional chip enable (active-low)
-    input  wire                  func_we_n,  // Functional write enable (active-low)
+    input  wire                   func_ce_n,  // Functional chip enable (active-low)
+    input  wire                   func_we_n,  // Functional write enable (active-low)
     input  wire [ADDR_WIDTH-1:0] func_addr,  // Functional memory address bus
     input  wire [DATA_WIDTH-1:0] func_wdata, // Functional memory write data bus
     output wire [DATA_WIDTH-1:0] func_rdata  // Functional memory read data bus
 );
 
-    // JTAG TAP Controller Interface Signals
-    wire [MBIST_DR_LEN-1:0] mbist_status;      // Status vector sent to JTAG Capture-DR
-    wire [MBIST_DR_LEN-1:0] mbist_ctrl;        // Control vector received from JTAG Update-DR
-    wire                    mbist_start_pulse; // 1 cycle trigger pulse generated in Update-DR
+    // JTAG TAP Controller Interface Signals (TCK Domain)
+    wire [MBIST_DR_LEN-1:0] mbist_status;          // Status vector sent to JTAG Capture-DR
+    wire [MBIST_DR_LEN-1:0] mbist_ctrl;            // Control vector received from JTAG Update-DR
+    wire                    mbist_start_pulse_tck; // 1 cycle trigger pulse generated in Update-DR (TCK domain)
+    wire                    mbist_done_pulse_tck;  // Synchronized done pulse received in TCK domain
+    reg                     mbist_done_latched;    // Latched completion flag held in TCK domain
+
+    // Synchronized CDC Signals (CLK Domain)
+    wire                    mbist_start_pulse_clk; // Synchronized start pulse in CLK domain
+    wire                    mbist_ctrl_bit0_clk;   // Synchronized control bit 0 in CLK domain
 
     // MBIST Controller Control & Status Signals
     reg                     mbist_start_reg;   // Registered start signal to sustain execution
@@ -62,30 +68,75 @@ module jtag_mbist_top #(
         .IR_LEN       (IR_LEN),
         .MBIST_DR_LEN (MBIST_DR_LEN)
     ) u_jtag_tap (
-        .tck               (tck),               // Connect external TCK
-        .tms               (tms),               // Connect external TMS
-        .trst_n            (trst_n),            // Connect external TRSTn
-        .tdi               (tdi),               // Connect external TDI
-        .tdo               (tdo),               // Connect external TDO
-        .mbist_status_in   (mbist_status),      // Status input sampled in Capture-DR
-        .mbist_ctrl_out    (mbist_ctrl),        // Control output latched in Update-DR
-        .mbist_start_pulse (mbist_start_pulse)  // Pulse asserted on Update-DR transition
+        .tck               (tck),                   // Connect external TCK
+        .tms               (tms),                   // Connect external TMS
+        .trst_n            (trst_n),                // Connect external TRSTn
+        .tdi               (tdi),                   // Connect external TDI
+        .tdo               (tdo),                   // Connect external TDO
+        .mbist_status_in   (mbist_status),          // Status input sampled in Capture-DR
+        .mbist_ctrl_out    (mbist_ctrl),            // Control output latched in Update-DR
+        .mbist_start_pulse (mbist_start_pulse_tck)  // Pulse asserted on Update-DR transition
     );
+
+    ///////////////////////////////////////////////////////////
+    // 2. Clock Domain Crossing (CDC) Synchronization Blocks
+    //////////////////////////////////////////////////////////
+
+    // Synchronize MBIST start trigger pulse: TCK -> CLK
+    cdc_pulse_sync u_sync_start_pulse (
+        .clk_src   (tck),
+        .rst_src_n (trst_n),
+        .pulse_in  (mbist_start_pulse_tck),
+        .clk_dst   (clk),
+        .rst_dst_n (rst_n),
+        .pulse_out (mbist_start_pulse_clk)
+    );
+
+    // Synchronize static control register bit 0: TCK -> CLK
+    cdc_level_sync u_sync_ctrl_bit0 (
+        .clk_dst   (clk),
+        .rst_dst_n (rst_n),
+        .sig_in    (mbist_ctrl[0]),
+        .sig_out   (mbist_ctrl_bit0_clk)
+    );
+
+    // Synchronize MBIST done completion pulse: CLK -> TCK
+    cdc_pulse_sync u_sync_done_pulse (
+        .clk_src   (clk),
+        .rst_src_n (rst_n),
+        .pulse_in  (mbist_done),
+        .clk_dst   (tck),
+        .rst_dst_n (trst_n),
+        .pulse_out (mbist_done_pulse_tck)
+    );
+
+    // Latch done flag in TCK domain upon receiving synchronized completion pulse
+    always @(posedge tck or negedge trst_n) begin
+        if (!trst_n) begin
+            mbist_done_latched <= 1'b0;
+        end
+        else if (mbist_start_pulse_tck) begin
+            mbist_done_latched <= 1'b0;
+        end
+        else if (mbist_done_pulse_tck) begin
+            mbist_done_latched <= 1'b1;
+        end
+    end
 
     // Pack MBIST results into the 32 bit status register: [31:10] Padding, [9:2] Fail Addr, [1] Fail, [0] Done
     assign mbist_status = {
         {(MBIST_DR_LEN - 2 - ADDR_WIDTH){1'b0}}, // [31:10] Padding (22 bits)
         mbist_rfail_addr,                        // Store first failing address [9:2] (8 bits)
         mbist_fail,                              // Store fail status flag [1] (1 bit)
-        mbist_done                               // Store completion status flag [0] (1 bit)
+        mbist_done_latched                       // Store completion status flag [0] (1 bit)
     };
 
-    // Auto-clearing start register: asserts on Update-DR pulse, deasserts on completion
+    // Auto-clearing start register: asserts on synchronized pulse, deasserts on completion
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             mbist_start_reg <= 1'b0;
         end
-        else if (mbist_start_pulse) begin
+        else if (mbist_start_pulse_clk) begin
             mbist_start_reg <= 1'b1;
         end
         else if (mbist_done) begin
@@ -94,13 +145,13 @@ module jtag_mbist_top #(
     end
 
     // Assert start if register is set or bit[0] of control register is high
-    assign mbist_start = mbist_start_reg | mbist_ctrl[0];
+    assign mbist_start = mbist_start_reg | mbist_ctrl_bit0_clk;
 
     // Engage test mode while test is active or when retaining completion state
     assign test_mode   = mbist_start | mbist_done;
 
     /////////////////////////////////
-    // 2. MBIST Controller Subsystem
+    // 3. MBIST Controller Subsystem
     ////////////////////////////////
   
     MBIST #(
@@ -121,7 +172,7 @@ module jtag_mbist_top #(
     );
 
     ///////////////////////////////////////////////////////////
-    // 3. DFT Memory MUXes (Functional vs. Test Mode Selection)
+    // 4. DFT Memory MUXes (Functional vs. Test Mode Selection)
     //////////////////////////////////////////////////////////
   
     assign sram_ce_n   = test_mode ? mbist_ce_n   : func_ce_n;  // Select CE between BIST and functional
@@ -133,7 +184,7 @@ module jtag_mbist_top #(
     assign func_rdata  = sram_rdata;
 
     //////////////////////////////
-    // 4. Target SRAM Memory Block
+    // 5. Target SRAM Memory Block
     /////////////////////////////
   
     sram_model #(

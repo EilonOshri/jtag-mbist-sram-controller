@@ -63,8 +63,11 @@ always @(posedge clk or negedge rst_n) begin
             IDLE: begin
                  addr_cnt   <= {ADDR_WIDTH{1'b0}};
                  op_phase   <= 1'b0;
-                 fail_flag  <= 1'b0;
-                 rfail_addr <= {ADDR_WIDTH{1'b0}};
+                // Clear status flags ONLY when a new run is triggered
+                 if (start) begin
+                     fail_flag  <= 1'b0;
+                     rfail_addr <= {ADDR_WIDTH{1'b0}};
+                 end
             end
 
             

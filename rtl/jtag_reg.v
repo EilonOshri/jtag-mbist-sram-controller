@@ -1,44 +1,56 @@
 module jtag_reg #(
-        parameter IR_LEN = 4,
-        parameter DR_LEN = 1,
-        parameter IR_OPCODE = 4'b0
-        ) (
-        input tck,
-        input trst,
-        input tdi,
-        output tdo,
-        input state_tlr,
-        input state_capturedr,
-        input state_shiftdr,
-        input state_updatedr,
-        input[IR_LEN-1:0] ir_reg,
-        input[DR_LEN-1:0] dr_dataIn,
-        output reg[DR_LEN-1:0] dr_dataOut,
-        output reg dr_dataOutReady
-    );
+    parameter DR_LEN = 32
+)(
+    input  wire              tck,
+    input  wire              trst_n,
 
-    reg[DR_LEN-1:0] dr_reg;
+    // JTAG TAP FSM States
+    input  wire              state_tlr,
+    input  wire              state_capturedr,
+    input  wire              state_shiftdr,
+    input  wire              state_updatedr,
 
-    assign tdo = dr_reg[0];
+    // Serial scan interface
+    input  wire              tdi,
+    output wire              tdo,
 
-    always @(posedge tck or negedge trst) begin
-        if(~trst) begin
-            dr_reg <= 0;
-            dr_dataOut <= 0;
-            dr_dataOutReady <= 0;
+    // Parallel load/update interface
+    input  wire [DR_LEN-1:0] dr_dataIn,
+    output reg  [DR_LEN-1:0] dr_dataOut,
+    output reg               dr_dataOutReady
+);
+
+    reg [DR_LEN-1:0] dr_reg;
+
+    // Shift logic safe for any DR_LEN >= 1 (prevents reversed index [0:1])
+    wire [DR_LEN:0]   dr_concat     = {tdi, dr_reg};
+    wire [DR_LEN-1:0] dr_shift_next = dr_concat[DR_LEN:1];
+
+    always @(posedge tck or negedge trst_n) begin
+        if (!trst_n) begin
+            dr_reg          <= {DR_LEN{1'b0}};
+            dr_dataOut      <= {DR_LEN{1'b0}};
+            dr_dataOutReady <= 1'b0;
+        end else if (state_tlr) begin
+            // Compliant with IEEE 1149.1: Disable test control registers on TLR
+            dr_reg          <= dr_dataIn;
+            dr_dataOut      <= {DR_LEN{1'b0}};
+            dr_dataOutReady <= 1'b0;
+        end else if (state_capturedr) begin
+            dr_reg          <= dr_dataIn;
+            dr_dataOutReady <= 1'b0;
+        end else if (state_shiftdr) begin
+            dr_reg          <= dr_shift_next;
+            dr_dataOutReady <= 1'b0;
+        end else if (state_updatedr) begin
+            dr_dataOut      <= dr_reg;
+            dr_dataOutReady <= 1'b1;
         end else begin
-            dr_dataOutReady <= 0;
-            if(state_tlr) dr_reg <= dr_dataIn;
-            if(ir_reg == IR_OPCODE) begin
-                if(state_capturedr) dr_reg <= dr_dataIn;
-                else if(state_shiftdr) begin
-                    if(DR_LEN == 1) dr_reg <= tdi;
-                    else dr_reg <= {tdi, dr_reg[DR_LEN-1:1]};
-                end else if(state_updatedr) begin
-                    dr_dataOut <= dr_reg;
-                    dr_dataOutReady <= 1;
-                end
-            end
+            dr_dataOutReady <= 1'b0;
         end
     end
+
+    // Serial output: LSB is shifted out first
+    assign tdo = dr_reg[0];
+
 endmodule

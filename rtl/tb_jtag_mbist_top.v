@@ -15,10 +15,11 @@ module tb_jtag_mbist_top;
     localparam [IR_LEN-1:0] OP_BYPASS    = 4'b1111;
     localparam [IR_LEN-1:0] OP_UNKNOWN   = 4'b0101; // Test default bypass behavior
 
-    // System Clock: 100 MHz (Period = 10ns)
-    // JTAG Clock:   20 MHz  (Period = 50ns, async CDC verification)
+    // System Clock: fixed at 100 MHz (Period = 10ns)
     localparam CLK_PERIOD = 10;
-    localparam TCK_PERIOD = 50;
+
+    // JTAG Clock: dynamically adjustable via real variable for CDC sweep
+    real tck_half_ns = 25.0; // Default: 20 MHz (Period = 50ns)
 
     // =========================================================================
     // Signals
@@ -79,14 +80,14 @@ module tb_jtag_mbist_top;
 
     initial begin
         tck = 1'b0;
-        forever #(TCK_PERIOD / 2) tck = ~tck;
+        forever #(tck_half_ns) tck = ~tck;
     end
 
     // =========================================================================
     // JTAG Driver Tasks (IEEE 1149.1 Compliant Navigation)
     // =========================================================================
 
-    // Test-Logic-Reset: 5 consecutive TCK cycles with TMS=1
+    // Test-Logic-Reset: 6 consecutive TCK cycles with TMS=1
     task jtag_reset_tlr;
         integer i;
         begin
@@ -120,7 +121,8 @@ module tb_jtag_mbist_top;
                 @(negedge tck);
                 tdi = ir_in[i];
                 tms = (i == IR_LEN - 1) ? 1'b1 : 1'b0; // Exit1-IR on MSB
-                @(posedge tck);
+                @(posedge tck); // Shift internal register
+                @(negedge tck); // TDO updates on falling edge
                 #1;
                 ir_out[i] = tdo;
             end
@@ -147,7 +149,8 @@ module tb_jtag_mbist_top;
                 @(negedge tck);
                 tdi = dr_in[i];
                 tms = (i == MBIST_DR_LEN - 1) ? 1'b1 : 1'b0; // Exit1-DR on MSB
-                @(posedge tck);
+                @(posedge tck); // Shift internal register
+                @(negedge tck); // TDO updates on falling edge
                 #1;
                 dr_out[i] = tdo;
             end
@@ -169,10 +172,11 @@ module tb_jtag_mbist_top;
             @(negedge tck);
             tdi = bit_in;
             tms = 1'b1; // Exit1-DR
-            @(posedge tck);
+            @(posedge tck); // Shift edge: TDI -> bypass_reg
+            @(negedge tck); // Output edge: bypass_reg -> tdo (registered)
             #1;
             bit_out = tdo;
-            @(negedge tck) tms = 1'b1; // Update-DR
+            tms = 1'b1;     // Update-DR
             @(negedge tck) tms = 1'b0; // Run-Test/Idle
         end
     endtask
@@ -216,10 +220,38 @@ module tb_jtag_mbist_top;
     endtask
 
     // =========================================================================
+    // Reusable MBIST Execution Task
+    // =========================================================================
+    task run_mbist;
+        output [MBIST_DR_LEN-1:0] status;
+        integer poll_iter;
+        begin
+            jtag_shift_ir(OP_RUN_MBIST, ir_capture);
+            jtag_shift_dr(32'h0000_0001, status); // Pulse start (bit0=1)
+
+            poll_iter = 0;
+            status = 32'h0;
+            while (status[0] !== 1'b1 && poll_iter < 5000) begin
+                jtag_shift_dr(32'h0000_0000, status); // Poll status only
+                poll_iter = poll_iter + 1;
+            end
+            $display("  run_mbist: done in %0d polls, status=0x%08h (done=%b fail=%b addr=0x%02h)",
+                      poll_iter, status, status[0], status[1], status[9:2]);
+            if (poll_iter >= 5000) begin
+                $display("[FAIL][MBIST] Timed out waiting for Done!");
+                error_count = error_count + 1;
+            end
+        end
+    endtask
+
+    // =========================================================================
     // Main Verification Procedure
     // =========================================================================
     integer poll_iter;
     reg bypass_val;
+    reg [MBIST_DR_LEN-1:0] status_w;
+    integer ratio_idx;
+    real ratio_list [0:4];
 
     initial begin
         // Signal Initializations
@@ -232,11 +264,12 @@ module tb_jtag_mbist_top;
         func_we_n    = 1'b1;
         func_addr    = {ADDR_WIDTH{1'b0}};
         func_wdata   = {DATA_WIDTH{1'b0}};
+        tck_half_ns  = 25.0; // 20 MHz TCK (ratio TCK:CLK = 1:5)
 
         // Reset Sequence
         #(CLK_PERIOD * 4);
         rst_n = 1'b1;
-        #(TCK_PERIOD * 2);
+        #(tck_half_ns * 4);
         trst_n = 1'b1;
         jtag_reset_tlr();
         #(CLK_PERIOD * 5);
@@ -255,7 +288,7 @@ module tb_jtag_mbist_top;
         // Test standard BYPASS opcode (0xF)
         jtag_shift_ir(OP_BYPASS, ir_capture);
         jtag_shift_bypass(1'b1, bypass_val);
-        if (bypass_val !== 1'b0) begin // 1-cycle capture value of bypass is 0
+        if (bypass_val !== 1'b0) begin
             $display("[WARN] First bypass shift returned non-zero capture: %b", bypass_val);
         end
         jtag_shift_bypass(1'b1, bypass_val);
@@ -280,25 +313,8 @@ module tb_jtag_mbist_top;
         $display("\n===================================================================");
         $display(" TEST 3: JTAG MBIST Execution - Clean SRAM (No Fault)");
         $display("===================================================================");
-        // Load MBIST instruction
-        jtag_shift_ir(OP_RUN_MBIST, ir_capture);
-
-        // Assert Start command pulse: DR bit[0] = 1
-        jtag_shift_dr(32'h0000_0001, dr_capture);
-
-        // Polling loop: DR bit[0] = 0 (Query status without triggering new run)
-        poll_iter = 0;
-        dr_capture = 32'h0;
-        while (dr_capture[0] !== 1'b1 && poll_iter < 3000) begin
-            jtag_shift_dr(32'h0000_0000, dr_capture);
-            poll_iter = poll_iter + 1;
-        end
-
-        $display("Polling completed in %0d JTAG DR reads.", poll_iter);
-        $display("Status Register = 0x%08h (Done=%b, Fail=%b, FailAddr=0x%02h)", 
-                 dr_capture, dr_capture[0], dr_capture[1], dr_capture[9:2]);
-
-        if (dr_capture[0] === 1'b1 && dr_capture[1] === 1'b0) begin
+        run_mbist(status_w);
+        if (status_w[0] === 1'b1 && status_w[1] === 1'b0) begin
             $display("[PASS][MBIST] Clean run passed with zero errors.");
         end else begin
             $display("[FAIL][MBIST] Clean run failed! Expected Done=1, Fail=0.");
@@ -306,8 +322,8 @@ module tb_jtag_mbist_top;
         end
 
         // Polling again to verify results are sticky and not cleared by read
-        jtag_shift_dr(32'h0000_0000, dr_capture);
-        if (dr_capture[0] !== 1'b1 || dr_capture[1] !== 1'b0) begin
+        jtag_shift_dr(32'h0000_0000, status_w);
+        if (status_w[0] !== 1'b1 || status_w[1] !== 1'b0) begin
             $display("[FAIL][MBIST] Status was unexpectedly cleared on consecutive read!");
             error_count = error_count + 1;
         end else begin
@@ -318,39 +334,102 @@ module tb_jtag_mbist_top;
         $display(" TEST 4: JTAG MBIST Execution - Injected Fault Verification");
         $display("===================================================================");
         inject_fault = 1'b1;
-
-        // Trigger a new run with bit[0] = 1
-        jtag_shift_dr(32'h0000_0001, dr_capture);
-
-        poll_iter = 0;
-        dr_capture = 32'h0;
-        while (dr_capture[0] !== 1'b1 && poll_iter < 3000) begin
-            jtag_shift_dr(32'h0000_0000, dr_capture);
-            poll_iter = poll_iter + 1;
-        end
-
-        $display("Fault Run Finished in %0d JTAG DR reads.", poll_iter);
-        $display("Status Register = 0x%08h (Done=%b, Fail=%b, FailAddr=0x%02h)", 
-                 dr_capture, dr_capture[0], dr_capture[1], dr_capture[9:2]);
-
-        // Expect: Done=1, Fail=1, First failing address = 0x2A
-        if (dr_capture[0] === 1'b1 && dr_capture[1] === 1'b1 && dr_capture[9:2] === 8'h2A) begin
+        run_mbist(status_w);
+        if (status_w[0] === 1'b1 && status_w[1] === 1'b1 && status_w[9:2] === 8'h2A) begin
             $display("[PASS][MBIST] Injected fault detected correctly at address 0x2A!");
         end else begin
             $display("[FAIL][MBIST] Fault run failed! Expected Done=1, Fail=1, FailAddr=0x2A.");
             error_count = error_count + 1;
         end
+        inject_fault = 1'b0;
 
         $display("\n===================================================================");
         $display(" TEST 5: Test-Logic-Reset (TLR) Functional Recovery Verification");
         $display("===================================================================");
-        // Force TAP to TLR to verify test registers de-assert
         jtag_reset_tlr();
-        inject_fault = 1'b0;
-
-        // Verify SRAM functional read/write operates cleanly after MBIST
         func_write(8'h55, 8'hAA);
         func_read_check(8'h55, 8'hAA);
+
+        $display("\n===================================================================");
+        $display(" TEST 6: MBIST Across TCK:CLK Frequency Ratios (CDC robustness)");
+        $display("===================================================================");
+        ratio_list[0] = 60.0; // TCK period 120ns -> TCK much slower than CLK (10ns)
+        ratio_list[1] = 25.0; // TCK period 50ns  -> Original ratio (1:5)
+        ratio_list[2] = 6.0;  // TCK period 12ns  -> Close to CLK period
+        ratio_list[3] = 3.0;  // TCK period 6ns   -> TCK faster than CLK
+        ratio_list[4] = 1.5;  // TCK period 3ns   -> TCK much faster than CLK
+
+        inject_fault = 1'b1;
+        for (ratio_idx = 0; ratio_idx < 5; ratio_idx = ratio_idx + 1) begin
+            tck_half_ns = ratio_list[ratio_idx];
+            @(negedge tck); // Let the new period take effect cleanly
+            $display(" -- sweep step %0d: TCK half-period = %0.1f ns (TCK period = %0.1f ns, CLK period = %0d ns)",
+                      ratio_idx, tck_half_ns, tck_half_ns * 2, CLK_PERIOD);
+            run_mbist(status_w);
+            if (status_w[0] === 1'b1 && status_w[1] === 1'b1 && status_w[9:2] === 8'h2A) begin
+                $display("[PASS][SWEEP] Ratio step %0d correct.", ratio_idx);
+            end else begin
+                $display("[FAIL][SWEEP] Ratio step %0d wrong result! status=0x%08h", ratio_idx, status_w);
+                error_count = error_count + 1;
+            end
+        end
+        inject_fault = 1'b0;
+        tck_half_ns  = 25.0; // Restore default rate
+
+        $display("\n===================================================================");
+        $display(" TEST 7: Asymmetric Reset Robustness (CLK-domain-only reset)");
+        $display("===================================================================");
+        jtag_reset_tlr();
+        rst_n = 1'b0;
+        #(CLK_PERIOD * 3);
+        rst_n = 1'b1;
+        #(CLK_PERIOD * 10);
+        if (dut.mbist_start === 1'b1 || dut.u_mbist_ctrl.current_state !== 3'd0) begin
+            $display("[FAIL][RESET] CLK-domain-only reset produced a spurious MBIST start! state=%0d start=%b",
+                      dut.u_mbist_ctrl.current_state, dut.mbist_start);
+            error_count = error_count + 1;
+        end else begin
+            $display("[PASS][RESET] No spurious start after asymmetric CLK-domain reset.");
+        end
+
+        $display("\n===================================================================");
+        $display(" TEST 8: Functional/Test Isolation During an Active MBIST Run");
+        $display("===================================================================");
+        jtag_shift_ir(OP_RUN_MBIST, ir_capture);
+        jtag_shift_dr(32'h0000_0001, status_w); // Pulse start
+
+        // Wait dynamically for CDC to propagate start and assert test_mode
+        fork : wait_test_mode_proc
+            begin
+                @(posedge dut.test_mode);
+            end
+            begin
+                repeat (30) @(posedge clk);
+                $display("[WARN][ISO] Timeout waiting for test_mode assertion!");
+            end
+        join_any
+        disable wait_test_mode_proc;
+
+        func_write(8'hE5, 8'h5A); // Attempted functional write during test_mode
+        @(posedge clk);
+        #1;
+        if (dut.test_mode === 1'b1 && func_rdata !== {DATA_WIDTH{1'b0}}) begin
+            $display("[FAIL][ISO] func_rdata leaked internal data during test_mode: 0x%0h", func_rdata);
+            error_count = error_count + 1;
+        end else begin
+            $display("[PASS][ISO] func_rdata did not leak BIST data during test_mode.");
+        end
+
+        // Wait for this run to finish
+        poll_iter = 0;
+        status_w  = 32'h0;
+        while (status_w[0] !== 1'b1 && poll_iter < 5000) begin
+            jtag_shift_dr(32'h0000_0000, status_w);
+            poll_iter = poll_iter + 1;
+        end
+
+        // Verify address 0xE5 was NOT modified by the blocked functional write
+        func_read_check(8'hE5, 8'h00);
 
         // =====================================================================
         // Final Summary

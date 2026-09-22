@@ -1,4 +1,4 @@
-module MBIST #(
+module mbist_controller #(
     parameter ADDR_WIDTH = 8,                           // 256 words memory depth
     parameter DATA_WIDTH = 8                            // 8-bit word data width
 )(
@@ -295,7 +295,7 @@ always @(*) begin
 
         // Hold completion status until start is deasserted
         DONE: begin
-            if (start == 0) begin
+            if (!start) begin
                 next_state = IDLE;
             end
             else begin

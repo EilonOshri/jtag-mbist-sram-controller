@@ -75,7 +75,7 @@ Written in Verilog, the design tackles critical Clock Domain Crossing (CDC) chal
 | `cdc_pulse_sync.v` | Dual clock domain pulse synchronizer |
 | `mbist_controller.v`| Algorithmic memory test state machine and pattern generator |
 | `sram_model.v` | Behavioral SRAM model with fault-injection input |
-| `tb_jtag_mbist_top.sv` | Simulation testbench with clock generators and JTAG scan tasks |
+| `tb_jtag_mbist_top.v` | Simulation testbench with clock generators and JTAG scan tasks |
 
 ---
 

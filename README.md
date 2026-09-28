@@ -15,3 +15,5 @@ Written in Verilog, the design tackles critical Clock Domain Crossing (CDC) chal
 * **Fault Injection Simulation:** Built in verification input (`inject_fault`) within the SRAM model to trigger failure scenarios and verify detection logic.
 
 ---
+
+## 2. Architecture & Block Diagram

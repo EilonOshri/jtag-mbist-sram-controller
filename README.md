@@ -46,7 +46,7 @@ Written in Verilog, the design tackles critical Clock Domain Crossing (CDC) chal
 
 | Domain | Clock Signal | Associated Logic Blocks | Function |
 |---|---|---|---|
-| **Test Domain** | `tck` | `u_jtag_tap`, TCK Shadow Regs | Scans in instructions/data, latches final pass/fail results |
+| **Test Domain** | `tck` | `u_jtag_tap`, Status Capture Registers | Scans in instructions/data, latches final pass/fail results |
 | **System Domain** | `clk` | `u_mbist_ctrl`, `u_sram`, FSM | Executes MBIST algorithms at functional system clock frequency |
 
 #### Synchronization Mechanism

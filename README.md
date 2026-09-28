@@ -17,9 +17,6 @@ Written in Verilog, the design tackles critical Clock Domain Crossing (CDC) chal
 ---
 
 ## 2. Architecture & Block Diagram
-![System Architecture & Block Diagram](docs/adr/block%20diagram%20-.png)
-
-## 2. Architecture & Block Diagram
 
 ![System Architecture & Block Diagram](block%20diagram%20-.png)
 
@@ -50,9 +47,9 @@ Written in Verilog, the design tackles critical Clock Domain Crossing (CDC) chal
 | **System Domain** | `clk` | `u_mbist_ctrl`, `u_sram`, FSM | Executes MBIST algorithms at functional system clock frequency |
 
 #### Synchronization Mechanism
-1. **Start Trigger:** Setting `ctrl[0] = 1` in the MBIST Control DR asserts `mbist_start_cmd_tck` during `Update-DR`. This single-cycle pulse in `TCK` is synchronized into `CLK` as `mbist_start_pulse_clk`.
+1. **Start Trigger:** Setting `ctrl[0] = 1` in the MBIST Control DR asserts `mbist_start_cmd_tck` during `Update-DR`. This single cycle pulse in `TCK` is synchronized into `CLK` as `mbist_start_pulse_clk`.
 2. **Test Run:** `mbist_start_reg` latches high, asserting `test_mode = 1` to route SRAM buses to `mbist_controller`.
-3. **Completion & Latch:** The rising edge of `mbist_done` triggers a pulse back to the `TCK` domain (`mbist_done_pulse_tck`), safely latching `fail` and `rfail_addr` into shadow flip-flops.
+3. **Completion & Latch:** The rising edge of `mbist_done` triggers a pulse back to the `TCK` domain (`mbist_done_pulse_tck`), safely latching `fail` and `rfail_addr` into shadow Register.
 
 #### JTAG MBIST Status Register Bit Mapping (32-bit `mbist_status`)
 

@@ -18,7 +18,7 @@ Written in Verilog, the design tackles critical Clock Domain Crossing (CDC) chal
 
 ## 2. Architecture & Block Diagram
 
-![System Architecture & Block Diagram](block%20diagram%20-.png)
+![System Architecture & Block Diagram](docs/adr/block%20diagram%20-.png)
 
 ### Color Coding
 * **Pink Module (JTAG TAP):** IEEE 1149.1 TAP Controller interfacing external test pins (`tck`, `tms`, `tdi`, `trst_n`, `tdo`).

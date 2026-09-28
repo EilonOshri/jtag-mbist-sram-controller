@@ -17,5 +17,4 @@ Written in Verilog, the design tackles critical Clock Domain Crossing (CDC) chal
 ---
 
 ## 2. Architecture & Block Diagram
-![System Architecture & Block Diagram](docs/block diagram -.png)
-
+![System Architecture & Block Diagram](block%20diagram%20-.png)

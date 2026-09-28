@@ -61,3 +61,27 @@ Written in Verilog, the design tackles critical Clock Domain Crossing (CDC) chal
 | `[0]` | `DONE` | Test completion flag (`1` = finished) |
 
 ---
+
+## 4. Verification
+
+---
+
+## 5. File Descriptions
+
+| File Name | Description |
+|---|---|
+| `jtag_mbist_top.v` | Top level integration of JTAG, CDC, MBIST, MUXes, and SRAM model |
+| `jtag_tap_top.v` | IEEE 1149.1 TAP Controller and scan register definitions |
+| `cdc_pulse_sync.v` | Dual clock domain pulse synchronizer |
+| `mbist_controller.v`| Algorithmic memory test state machine and pattern generator |
+| `sram_model.v` | Behavioral SRAM model with fault-injection input |
+| `tb_jtag_mbist_top.sv` | Simulation testbench with clock generators and JTAG scan tasks |
+
+---
+
+## 6. Tools Used
+
+* **Language:** Verilog
+* **Simulation:** ModelSim / Quartus 
+* **Waveform Viewing:** ModelSim Wave Viewer
+* **Architecture Diagrams:** Excalidraw

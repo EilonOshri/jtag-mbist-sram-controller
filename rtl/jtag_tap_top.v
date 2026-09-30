@@ -48,13 +48,13 @@ module jtag_tap_top #(
 
     always @(posedge tck or negedge trst_n) begin
         if (!trst_n) begin
-            ir_shift_reg <= {{(IR_LEN-1){1'b0}}, 1'b1}; // 0001 pattern on reset
+            ir_shift_reg <= {{(IR_LEN-1){1'b0}}, 1'b1};
             ir_latched   <= OP_BYPASS;
         end else if (state_tlr) begin
             ir_shift_reg <= {{(IR_LEN-1){1'b0}}, 1'b1};
             ir_latched   <= OP_BYPASS;
         end else if (state_captureir) begin
-            ir_shift_reg <= {{(IR_LEN-1){1'b0}}, 1'b1}; // Fixed capture value
+            ir_shift_reg <= {{(IR_LEN-1){1'b0}}, 1'b1};
         end else if (state_shiftir) begin
             ir_shift_reg <= {tdi, ir_shift_reg[IR_LEN-1:1]};
         end else if (state_updateir) begin
@@ -64,7 +64,8 @@ module jtag_tap_top #(
 
     wire tdo_ir = ir_shift_reg[0];
 
-wire mbist_sel  = (ir_latched == OP_RUN_MBIST);
+    // Instruction Decodes for DR gating
+    wire mbist_sel  = (ir_latched == OP_RUN_MBIST);
     wire bypass_sel = !mbist_sel;
 
     // 3. Bypass Register (1-bit DR)
@@ -102,8 +103,8 @@ wire mbist_sel  = (ir_latched == OP_RUN_MBIST);
         .dr_dataOut      (mbist_ctrl_out),
         .dr_dataOutReady (mbist_start_pulse)
     );
-    
-    // 5. Multiplex TDO & Output on Falling Edge of TCK
+
+    // 5. Multiplex TDO
     reg tdo_mux;
     always @(*) begin
         if (state_shiftir) begin

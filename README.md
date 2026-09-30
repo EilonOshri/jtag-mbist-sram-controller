@@ -79,7 +79,7 @@ The `mbist_controller` executes the **March C-** algorithm to detect physical ma
 
 ## 4. Verification: Fault Injection
 
-![MBIST Verification Waveform](docs/adr/%20verification%20.png)
+![MBIST Verification Waveform](docs/adr/Verification.png)
 
 * **Fault Injection:** Active defect asserted (`inject_fault = 1`).
 * **CDC Synchronization ($t \approx 71\,\mu\text{s}$):** Pulse transfer via `pulse_in` to `pulse_out` asserts `start` and triggers MBIST execution.

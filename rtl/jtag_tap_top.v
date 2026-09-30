@@ -64,42 +64,45 @@ module jtag_tap_top #(
 
     wire tdo_ir = ir_shift_reg[0];
 
-// 3. Bypass Register (1-bit DR)
-  wire tdo_bypass;
-  jtag_reg #(
-      .DR_LEN          (1)
-  ) bypass_dr (
-      .tck             (tck),
-      .trst_n          (trst_n),
-      .state_tlr       (state_tlr),
-      .state_capturedr (state_capturedr),
-      .state_shiftdr   (state_shiftdr),
-      .state_updatedr  (state_updatedr),
-      .tdi             (tdi),
-      .tdo             (tdo_bypass),
-      .dr_dataIn       (1'b0),
-      .dr_dataOut      (),
-      .dr_dataOutReady ()
-  );
+wire mbist_sel  = (ir_latched == OP_RUN_MBIST);
+    wire bypass_sel = !mbist_sel;
 
-  // 4. MBIST Data Register
-  wire tdo_mbist;
-  jtag_reg #(
-      .DR_LEN          (MBIST_DR_LEN)
-  ) mbist_dr (
-      .tck             (tck),
-      .trst_n          (trst_n),
-      .state_tlr       (state_tlr),
-      .state_capturedr (state_capturedr),
-      .state_shiftdr   (state_shiftdr),
-      .state_updatedr  (state_updatedr),
-      .tdi             (tdi),
-      .tdo             (tdo_mbist),
-      .dr_dataIn       (mbist_status_in),
-      .dr_dataOut      (mbist_ctrl_out),
-      .dr_dataOutReady (mbist_start_pulse)
-  );
+    // 3. Bypass Register (1-bit DR)
+    wire tdo_bypass;
+    jtag_reg #(
+        .DR_LEN          (1)
+    ) bypass_dr (
+        .tck             (tck),
+        .trst_n          (trst_n),
+        .state_tlr       (state_tlr),
+        .state_capturedr (state_capturedr & bypass_sel),
+        .state_shiftdr   (state_shiftdr   & bypass_sel),
+        .state_updatedr  (state_updatedr  & bypass_sel),
+        .tdi             (tdi),
+        .tdo             (tdo_bypass),
+        .dr_dataIn       (1'b0),
+        .dr_dataOut      (),
+        .dr_dataOutReady ()
+    );
 
+    // 4. MBIST Data Register
+    wire tdo_mbist;
+    jtag_reg #(
+        .DR_LEN          (MBIST_DR_LEN)
+    ) mbist_dr (
+        .tck             (tck),
+        .trst_n          (trst_n),
+        .state_tlr       (state_tlr),
+        .state_capturedr (state_capturedr & mbist_sel),
+        .state_shiftdr   (state_shiftdr   & mbist_sel),
+        .state_updatedr  (state_updatedr  & mbist_sel),
+        .tdi             (tdi),
+        .tdo             (tdo_mbist),
+        .dr_dataIn       (mbist_status_in),
+        .dr_dataOut      (mbist_ctrl_out),
+        .dr_dataOutReady (mbist_start_pulse)
+    );
+    
     // 5. Multiplex TDO & Output on Falling Edge of TCK
     reg tdo_mux;
     always @(*) begin

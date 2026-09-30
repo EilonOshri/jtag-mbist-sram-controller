@@ -77,7 +77,15 @@ The `mbist_controller` executes the **March C-** algorithm to detect physical ma
 
 ---
 
-## 4. Verification
+## 4. Verification: Fault Injection
+
+![MBIST Verification Waveform](docs/adr/verification.png)
+
+* **Fault Injection:** Active defect asserted (`inject_fault = 1`).
+* **CDC Synchronization ($t \approx 71\,\mu\text{s}$):** Pulse transfer via `pulse_in` to `pulse_out` asserts `start` and triggers MBIST execution.
+* **Fault Detection ($t = 74.56\,\mu\text{s}$, Cursor 2):** During the March read cycle (`current_state = 010`) at address `addr_cnt = 2a`, a data mismatch is detected.
+* **Diagnostic Lock:** The `fail` flag immediately asserts High (`St1`), and `rfail_addr` locks onto the failing address `0x2A`.
+* **Self-Checking Testbench:** `error_count` remains `0`, confirming all hardware assertions and status checks passed.
 
 ---
 

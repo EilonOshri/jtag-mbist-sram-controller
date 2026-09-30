@@ -117,8 +117,8 @@ module jtag_mbist_top #(
         end
     end
 
-    assign mbist_done_rise = mbist_done & ~mbist_done_d;
-
+assign mbist_start_cmd_tck = mbist_start_pulse_tck & mbist_ctrl[0];
+    
     // CLK -> TCK: Synchronize completion pulse
     cdc_pulse_sync u_sync_done_pulse (
         .clk_src   (clk),

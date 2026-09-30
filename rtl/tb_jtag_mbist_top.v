@@ -116,13 +116,13 @@ module tb_jtag_mbist_top;
             @(negedge tck) tms = 1'b0;
             @(negedge tck) tms = 1'b0;
 
-            // Shift IR
+            // Shift IR: exactly ONE TCK cycle per bit.
+            // TDO is registered on negedge, so it already shows the bit that
+            // is about to be shifted out at the following posedge.
             for (i = 0; i < IR_LEN; i = i + 1) begin
                 @(negedge tck);
                 tdi = ir_in[i];
                 tms = (i == IR_LEN - 1) ? 1'b1 : 1'b0; // Exit1-IR on MSB
-                @(posedge tck); // Shift internal register
-                @(negedge tck); // TDO updates on falling edge
                 #1;
                 ir_out[i] = tdo;
             end
@@ -144,13 +144,13 @@ module tb_jtag_mbist_top;
             @(negedge tck) tms = 1'b0;
             @(negedge tck) tms = 1'b0;
 
-            // Shift DR
+            // Shift DR: exactly ONE TCK cycle per bit.
+            // TDO is registered on negedge, so it already shows the bit that
+            // is about to be shifted out at the following posedge.
             for (i = 0; i < MBIST_DR_LEN; i = i + 1) begin
                 @(negedge tck);
                 tdi = dr_in[i];
                 tms = (i == MBIST_DR_LEN - 1) ? 1'b1 : 1'b0; // Exit1-DR on MSB
-                @(posedge tck); // Shift internal register
-                @(negedge tck); // TDO updates on falling edge
                 #1;
                 dr_out[i] = tdo;
             end

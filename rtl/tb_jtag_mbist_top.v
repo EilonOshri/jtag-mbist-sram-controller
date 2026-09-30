@@ -398,17 +398,18 @@ module tb_jtag_mbist_top;
         jtag_shift_ir(OP_RUN_MBIST, ir_capture);
         jtag_shift_dr(32'h0000_0001, status_w); // Pulse start
 
-        // Wait dynamically for CDC to propagate start and assert test_mode
-        fork : wait_test_mode_proc
-            begin
-                @(posedge dut.test_mode);
-            end
-            begin
-                repeat (30) @(posedge clk);
+        // Wait dynamically for CDC to propagate start and assert test_mode (Verilog-2001 compliant)
+        begin : wait_test_mode_proc
+            integer timeout_cnt;
+            timeout_cnt = 0;
+            while (dut.test_mode !== 1'b1 && timeout_cnt < 30) begin
+                @(posedge clk);
+                timeout_cnt = timeout_cnt + 1;
+            end    
+            if (dut.test_mode !== 1'b1) begin
                 $display("[WARN][ISO] Timeout waiting for test_mode assertion!");
             end
-        join_any
-        disable wait_test_mode_proc;
+        end
 
         func_write(8'hE5, 8'h5A); // Attempted functional write during test_mode
         @(posedge clk);

@@ -127,9 +127,10 @@ cd jtag-mbist-sram-controller/sim
 vsim -do run.do
 ```
 
-# Alternative: Run directly inside ModelSim GUI
-# Open ModelSim -> File -> Change Directory to "sim" -> In Transcript type:
-```bash do run.do
+Alternative: Run directly inside ModelSim GUI
+Open ModelSim -> File -> Change Directory to "sim" -> In Transcript type:
+```bash
+do run.do
 ```
 
 ---

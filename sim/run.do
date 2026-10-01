@@ -25,43 +25,7 @@ vsim work.tb_jtag_mbist_top
 
 # 5. Configure Waveform Window
 # ------------------------------------------------------------------------------
-# TESTBENCH & STATUS Signals
-add wave -noupdate -divider "TESTBENCH & STATUS"
-add wave -noupdate -radix decimal /tb_jtag_mbist_top/error_count
-add wave -noupdate /tb_jtag_mbist_top/inject_fault
-add wave -noupdate /tb_jtag_mbist_top/clk
-add wave -noupdate /tb_jtag_mbist_top/rst_n
-add wave -noupdate /tb_jtag_mbist_top/tck
-
-# JTAG TAP INTERFACE Signals
-add wave -noupdate -divider "JTAG TAP INTERFACE"
-add wave -noupdate /tb_jtag_mbist_top/tms
-add wave -noupdate /tb_jtag_mbist_top/tdi
-add wave -noupdate /tb_jtag_mbist_top/tdo
-add wave -noupdate /tb_jtag_mbist_top/uut/state_shiftdr
-add wave -noupdate /tb_jtag_mbist_top/uut/state_shiftir
-add wave -noupdate -radix hex /tb_jtag_mbist_top/uut/mbist_status_in
-add wave -noupdate /tb_jtag_mbist_top/uut/mbist_start_pulse
-
-# CDC SYNCHRONIZER Signals
-add wave -noupdate -divider "CDC SYNCHRONIZER"
-add wave -noupdate /tb_jtag_mbist_top/uut/cdc_inst/pulse_in
-add wave -noupdate /tb_jtag_mbist_top/uut/cdc_inst/pulse_out
-
-# MBIST & SRAM ENGINE Signals
-add wave -noupdate -divider "MBIST & SRAM ENGINE"
-add wave -noupdate /tb_jtag_mbist_top/uut/mbist_inst/start
-add wave -noupdate /tb_jtag_mbist_top/uut/mbist_inst/fail
-add wave -noupdate /tb_jtag_mbist_top/uut/mbist_inst/done
-add wave -noupdate /tb_jtag_mbist_top/uut/mbist_inst/current_state
-add wave -noupdate -radix hex /tb_jtag_mbist_top/uut/mbist_inst/rfail_addr
-add wave -noupdate -radix hex /tb_jtag_mbist_top/uut/mbist_inst/addr_cnt
-add wave -noupdate -radix hex /tb_jtag_mbist_top/uut/sram_inst/mem_rdata
-add wave -noupdate -radix hex /tb_jtag_mbist_top/uut/sram_inst/mem_wdata
-add wave -noupdate /tb_jtag_mbist_top/uut/sram_inst/mem_we_n
-add wave -noupdate /tb_jtag_mbist_top/uut/sram_inst/mem_ce_n
-add wave -noupdate -radix hex /tb_jtag_mbist_top/uut/ir_latched
-add wave -noupdate /tb_jtag_mbist_top/uut/mbist_sel
+do wave.do
 
 # Waveform formatting (show only leaf signal names)
 configure wave -justifyvalue left

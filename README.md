@@ -91,18 +91,50 @@ The `mbist_controller` executes the **March C-** algorithm to detect physical ma
 
 ## 5. Repository Structure
 
-| File Name | Description |
-|---|---|
-| `jtag_mbist_top.v` | Top level integration of JTAG, CDC, MBIST, MUXes, and SRAM model |
-| `jtag_tap_top.v` | IEEE 1149.1 TAP Controller and scan register definitions |
-| `cdc_pulse_sync.v` | Dual clock domain pulse synchronizer |
-| `mbist_controller.v`| Algorithmic memory test state machine and pattern generator |
-| `sram_model.v` | Behavioral SRAM model with fault-injection input |
-| `tb_jtag_mbist_top.v` | Simulation testbench with clock generators and JTAG scan tasks |
+```text
+├── rtl/
+│   ├── jtag_mbist_top.v       # Top-level integration (JTAG, CDC, MBIST, SRAM)
+│   ├── jtag_tap_top.v         # IEEE 1149.1 TAP Controller and scan registers
+│   ├── jtag_state_machine.v   # 16-state TAP FSM
+│   ├── jtag_reg.v             # Instruction & Data register implementations
+│   ├── cdc_pulse_sync.v       # Dual-clock domain pulse synchronizer
+│   ├── cdc_level_sync.v       # Multi-flop level synchronizer
+│   ├── mbist_controller.v     # Algorithmic March C- memory test engine
+│   └── sram_model.v           # Synchronous SRAM model with fault injection hook
+├── tb/
+│   └── tb_jtag_mbist_top.v    # Self-checking testbench with JTAG scan tasks
+├── sim/
+│   ├── run.do                 # Automated compile, execution & waveform script
+│   └── wave.do                # Formatted signal hierarchy and waveform layout
+└── docs/                      # Architectural diagrams and verification waveforms
+```
 
 ---
 
-## 6. Tools & Environment
+## 6. Simulation & Verification
+
+The project includes an automated Tcl simulation flow and structured waveform setup for **ModelSim**.
+
+### Prerequisites
+* Mentor Graphics ModelSim
+* Git
+
+### Run Instructions
+```bash
+# Step 1: Clone the repository and navigate to the simulation directory
+git clone [https://github.com/EilonOshri/jtag-mbist-sram-controller.git](https://github.com/EilonOshri/jtag-mbist-sram-controller.git)
+cd jtag-mbist-sram-controller/sim
+
+# Step 2: Run automated simulation with waveforms (from terminal)
+vsim -do run.do
+
+# Step 3 (Alternative): Run directly inside ModelSim GUI
+# Open ModelSim -> File -> Change Directory to "sim" -> In Transcript type:
+do run.do
+
+---
+
+## 7. Tools & Environment
 
 * **Language:** Verilog
 * **Simulation:** ModelSim / Quartus 

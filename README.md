@@ -119,7 +119,8 @@ The project includes an automated Tcl simulation flow and structured waveform se
 * Mentor Graphics ModelSim
 * Git
 
-### Run Instructions
+### Quick Start (Terminal / GUI)
+
 ```bash
 # Step 1: Clone the repository and navigate to the simulation directory
 git clone [https://github.com/EilonOshri/jtag-mbist-sram-controller.git](https://github.com/EilonOshri/jtag-mbist-sram-controller.git)
@@ -130,7 +131,8 @@ vsim -do run.do
 
 # Step 3 (Alternative): Run directly inside ModelSim GUI
 # Open ModelSim -> File -> Change Directory to "sim" -> In Transcript type:
-do run.do
+# do run.do
+```
 
 ---
 

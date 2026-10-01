@@ -91,8 +91,8 @@ module jtag_mbist_top #(
         .mbist_start_pulse (mbist_start_pulse_tck)
     );
 
-    // Gate Start pulse: trigger only on explicit command bit (ctrl[0] = 1)
-    assign mbist_start_cmd_tck = mbist_start_pulse_tck & mbist_ctrl[0];
+// mbist_start_pulse_tck is already qualified with dr_reg[0] inside jtag_reg
+assign mbist_start_cmd_tck = mbist_start_pulse_tck;
 
     // -------------------------------------------------------------------------
     // 2. Clock Domain Crossing (CDC) Synchronization
@@ -108,7 +108,7 @@ module jtag_mbist_top #(
         .pulse_out (mbist_start_pulse_clk)
     );
 
-    // CLK Domain: Convert level mbist_done to a single-cycle pulse
+// CLK Domain: Convert level mbist_done to a single-cycle pulse
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             mbist_done_d <= 1'b0;
@@ -117,7 +117,7 @@ module jtag_mbist_top #(
         end
     end
 
-assign mbist_start_cmd_tck = mbist_start_pulse_tck & mbist_ctrl[0];
+    assign mbist_done_rise = mbist_done & ~mbist_done_d;
     
     // CLK -> TCK: Synchronize completion pulse
     cdc_pulse_sync u_sync_done_pulse (

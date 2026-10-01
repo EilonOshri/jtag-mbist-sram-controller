@@ -122,7 +122,7 @@ The project includes an automated Tcl simulation flow and structured waveform se
 ### Quick Start (Terminal)
 
 ```bash
-git clone [https://github.com/EilonOshri/jtag-mbist-sram-controller.git](https://github.com/EilonOshri/jtag-mbist-sram-controller.git)
+git clone https://github.com/EilonOshri/jtag-mbist-sram-controller.git
 cd jtag-mbist-sram-controller/sim
 vsim -do run.do
 ```

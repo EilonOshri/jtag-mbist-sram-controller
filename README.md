@@ -49,7 +49,7 @@ Written in Verilog, the design tackles critical Clock Domain Crossing (CDC) chal
 #### Synchronization Mechanism
 1. **Start Trigger:** Setting `ctrl[0] = 1` in the MBIST Control DR asserts `mbist_start_cmd_tck` during `Update-DR`. This single cycle pulse in `TCK` is synchronized into `CLK` as `mbist_start_pulse_clk`.
 2. **Test Run:** `mbist_start_reg` latches high, asserting `test_mode = 1` to route SRAM buses to `mbist_controller`.
-3. **Completion & Latch:** The rising edge of `mbist_done` triggers a pulse back to the `TCK` domain (`mbist_done_pulse_tck`), safely latching `fail` and `rfail_addr` into shadow Register.
+3. **Completion & Register Capture:** The rising edge of `mbist_done` asserts an enable pulse (`mbist_done_pulse_tck`) in the `TCK` domain, synchronously capturing the static `fail` and `rfail_addr` values into shadow registers on the `TCK` clock edge.
 
 ### MBIST Testing Algorithm (March C-)
 

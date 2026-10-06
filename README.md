@@ -49,7 +49,13 @@ Written in Verilog, the design tackles critical Clock Domain Crossing (CDC) chal
 #### Synchronization Mechanism
 1. **Start Trigger:** Setting `ctrl[0] = 1` in the MBIST Control DR asserts `mbist_start_cmd_tck` during `Update-DR`. This single cycle pulse in `TCK` is synchronized into `CLK` as `mbist_start_pulse_clk`.
 2. **Test Run:** `mbist_start_reg` latches high, asserting `test_mode = 1` to route SRAM buses to `mbist_controller`.
-3. **Completion & Register Capture:** The rising edge of `mbist_done` asserts an enable pulse (`mbist_done_pulse_tck`) in the `TCK` domain, synchronously capturing the static `fail` and `rfail_addr` values into shadow registers on the `TCK` clock edge.
+3. **Completion & Register Capture:** The rising edge of `mbist_done` (`CLK` domain) crosses into the `TCK` domain via a Toggle-based CDC synchronizer to generate `mbist_done_pulse_tck`, which serves as the enable signal to synchronously capture the static `fail` flag and `rfail_addr` into shadow registers.
+
+#### CDC Design Note: Status Signals Handling
+`fail` and `rfail_addr` do not pass through CDC synchronizers, following the **Data-with-Flag** pattern:
+* **Static Sampling Window:** While `fail` and `rfail_addr` update during the test, they become completely static once MBIST reaches `DONE`.
+* **Safe Qualified Capture:** TCK registers ignore these signals during execution and only sample them once `mbist_done_pulse_tck` arrives, ensuring safe and stable capture.
+* **Bus Skew Prevention:** Sampling the multi-bit `rfail_addr` only after completion eliminates bit-skew issues that occur when synchronizing wide buses directly.
 
 ### MBIST Testing Algorithm (March C-)
 
